@@ -1,12 +1,15 @@
 <?php
 
-$config = require __DIR__ . '/db.local.php';
+$host = '127.0.0.1';
+$dbname = 'task_db';
+$username = 'YOUR_DATABASE_USERNAME'; // Replace with your database username
+$password = 'YOUR_DATABASE_PASSWORD'; // Replace with your database password
 
 try {
     $pdo = new PDO(
-        "mysql:host={$config['host']};port=3306;dbname={$config['dbname']};charset=utf8mb4",
-        $config['username'],
-        $config['password']
+        "mysql:host=$host;port=3306;dbname=$dbname;charset=utf8mb4",
+        $username,
+        $password
     );
 
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
