@@ -1,99 +1,107 @@
-<!-- pag irrun "http://localhost/CodeXTDL/index.php"-->
 <?php
-session_start();
+require_once 'db.php';
 
-// Initialize task storage
-if (!isset($_SESSION['tasks'])) {
-    $_SESSION['tasks'] = [];
-}
-
-// Initialize task ID counter
-if (!isset($_SESSION['next_id'])) {
-    $_SESSION['next_id'] = 1;
-}
-// Handle form submission
+// Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $action = $_POST['action'] ?? '';
+    $taskId = (int) ($_POST['task_id'] ?? 0);
 
+    // CREATE TASK
     if ($action === 'create') {
 
         $taskText = trim($_POST['task'] ?? '');
+        $taskDescription = trim($_POST['task_description'] ?? '');
 
-        if ($taskText !== '' && strlen($taskText) <= 120) {
+        if (
+            $taskText !== '' &&
+            strlen($taskText) <= 120 &&
+            $taskDescription !== ''
+        ) {
+            $stmt = $pdo->prepare(
+                "INSERT INTO tasks (task_name, task_description)
+                 VALUES (?, ?)"
+            );
 
-            $_SESSION['tasks'][] = [
-                'id' => $_SESSION['next_id'],
-                'text' => $taskText,
-                'completed' => false
-            ];
-
-            $_SESSION['next_id']++;
+            $stmt->execute([$taskText, $taskDescription]);
         }
     }
 
+    // UPDATE TASK
     elseif ($action === 'update') {
 
-    $taskId = (int) ($_POST['task_id'] ?? 0);
-    $taskText = trim($_POST['task'] ?? '');
+        $taskText = trim($_POST['task'] ?? '');
+        $taskDescription = trim($_POST['task_description'] ?? '');
 
-    if ($taskId > 0 && $taskText !== '' && strlen($taskText) <= 120) {
+        if (
+            $taskId > 0 &&
+            $taskText !== '' &&
+            strlen($taskText) <= 120 &&
+            $taskDescription !== ''
+        ) {
+            $stmt = $pdo->prepare(
+                "UPDATE tasks
+                 SET task_name = ?, task_description = ?
+                 WHERE id = ?"
+            );
 
-        foreach ($_SESSION['tasks'] as &$task) {
-
-            if ($task['id'] === $taskId) {
-                $task['text'] = $taskText;
-                break;
-            }
+            $stmt->execute([
+                $taskText,
+                $taskDescription,
+                $taskId
+            ]);
         }
-
-        unset($task);
     }
-}
 
+    // DELETE TASK
     elseif ($action === 'delete') {
 
-    $taskId = (int) ($_POST['task_id'] ?? 0);
+        if ($taskId > 0) {
+            $stmt = $pdo->prepare(
+                "DELETE FROM tasks WHERE id = ?"
+            );
 
-    foreach ($_SESSION['tasks'] as $index => $task) {
-
-        if ((int) $task['id'] === $taskId) {
-            unset($_SESSION['tasks'][$index]);
-            break;
+            $stmt->execute([$taskId]);
         }
     }
 
-    // Re-index the task array
-    $_SESSION['tasks'] = array_values($_SESSION['tasks']);
-}
-
+    // TOGGLE TASK STATUS
     elseif ($action === 'toggle') {
 
-    $taskId = (int) ($_POST['task_id'] ?? 0);
+        if ($taskId > 0) {
+            $stmt = $pdo->prepare(
+                "UPDATE tasks
+                 SET status = IF(
+                     status = 'pending',
+                     'completed',
+                     'pending'
+                 )
+                 WHERE id = ?"
+            );
 
-    foreach ($_SESSION['tasks'] as &$task) {
-
-        if ((int) $task['id'] === $taskId) {
-            $task['completed'] = !$task['completed'];
-            break;
+            $stmt->execute([$taskId]);
         }
     }
 
-    unset($task);
-}
-
-
+    // Redirect after POST
     header('Location: ' . $_SERVER['PHP_SELF']);
     exit();
 }
 
-// Calculate task statistics
-$totalTasks = count($_SESSION['tasks']);
+// READ TASKS FROM DATABASE
+$stmt = $pdo->query(
+    "SELECT * FROM tasks ORDER BY created_at DESC"
+);
+
+$tasks = $stmt->fetchAll();
+
+// CALCULATE TASK STATISTICS
+$totalTasks = count($tasks);
 
 $completedTasks = 0;
 
-foreach ($_SESSION['tasks'] as $task) {
-    if ($task['completed']) {
+foreach ($tasks as $task) {
+    if ($task['status'] === 'completed') {
         $completedTasks++;
     }
 }
@@ -176,6 +184,17 @@ $progressPercent = $totalTasks > 0
               <span id="char-count">0/120</span>
             </div>
 
+            <label for="task-description">Task description <span aria-hidden="true">*</span></label>
+
+              <textarea
+                  id="task-description"
+                  name="task_description"
+                  placeholder="Add a little more detail about your task..."
+                  rows="3"
+                  required
+              ></textarea>
+
+
             <p id="form-error" class="error" role="alert"></p>
 
             <button type="submit" class="primary" id="submit-button">
@@ -223,34 +242,42 @@ $progressPercent = $totalTasks > 0
 
          <ul id="task-list" class="task-list" aria-label="Tasks">
 
-                <?php foreach ($_SESSION['tasks'] as $task): ?>
+                <?php foreach ($tasks as $task): ?>
 
-                <li class="task-row <?php echo $task['completed'] ? 'is-complete' : ''; ?>">
+                <?php $isCompleted = $task['status'] === 'completed'; ?>
+
+                <li class="task-row <?php echo $isCompleted ? 'is-complete' : ''; ?>">
 
                     <!-- TOGGLE FORM -->
                     <input
                         type="checkbox"
                         class="task-check"
-                        id="task-<?php echo $task['id']; ?>"
-                        <?php echo $task['completed'] ? 'checked' : ''; ?>
-                        form="toggle-form-<?php echo $task['id']; ?>"
+                        id="task-<?php echo (int) $task['id']; ?>"
+                        <?php echo $isCompleted ? 'checked' : ''; ?>
+                        form="toggle-form-<?php echo (int) $task['id']; ?>"
                         onchange="this.form.submit()"
                         aria-label="Mark task as completed"
                     />
 
                     <form
-                        id="toggle-form-<?php echo $task['id']; ?>"
+                        id="toggle-form-<?php echo (int) $task['id']; ?>"
                         method="POST"
                         hidden
                     >
                         <input type="hidden" name="action" value="toggle">
-                        <input type="hidden" name="task_id" value="<?php echo $task['id']; ?>">
+                        <input type="hidden" name="task_id" value="<?php echo (int) $task['id']; ?>">
                     </form>
 
                     <!-- TASK TEXT -->
-                    <span class="task-text">
-                        <?php echo htmlspecialchars($task['text'], ENT_QUOTES, 'UTF-8'); ?>
-                    </span>
+                    <div class="task-content">
+                        <span class="task-text">
+                            <?php echo htmlspecialchars($task['task_name'], ENT_QUOTES, 'UTF-8'); ?>
+                        </span>
+
+                        <p class="task-description">
+                            <?php echo htmlspecialchars($task['task_description'], ENT_QUOTES, 'UTF-8'); ?>
+                        </p>
+                    </div>
 
                     <!-- TASK ACTIONS -->
                     <div class="task-actions">
@@ -260,8 +287,9 @@ $progressPercent = $totalTasks > 0
                             type="button"
                             class="icon-button"
                             data-action="edit"
-                            data-id="<?php echo $task['id']; ?>"
-                            data-text="<?php echo htmlspecialchars($task['text'], ENT_QUOTES, 'UTF-8'); ?>"
+                            data-id="<?php echo (int) $task['id']; ?>"
+                            data-text="<?php echo htmlspecialchars($task['task_name'], ENT_QUOTES, 'UTF-8'); ?>"
+                            data-description="<?php echo htmlspecialchars($task['task_description'], ENT_QUOTES, 'UTF-8'); ?>"
                             aria-label="Edit task"
                             title="Edit task"
                         >
@@ -274,7 +302,7 @@ $progressPercent = $totalTasks > 0
                         <form method="POST" class="delete-form">
 
                             <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="task_id" value="<?php echo $task['id']; ?>">
+                            <input type="hidden" name="task_id" value="<?php echo (int) $task['id']; ?>">
 
                             <button
                                 type="submit"

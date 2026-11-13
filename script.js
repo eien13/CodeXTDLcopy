@@ -2,7 +2,7 @@
 
 'use strict';
 // JavaScript handles UI interactions.
-// PHP handles task data and CRUD using sessions.
+// PHP handles task data and CRUD using MySQL
 
 
 // 1. UI STATE
@@ -15,6 +15,7 @@ let deletingForm = null;
 const getElement = (id) => document.getElementById(id);
 const form = getElement('task-form');
 const input = getElement('task-input');
+const descriptionInput = getElement('task-description');
 const list = getElement('task-list');
 const dialog = getElement('delete-dialog');
 
@@ -35,6 +36,7 @@ function resetForm() {
   getElement('cancel-edit').hidden = true;
   getElement('form-error').textContent = '';
   input.removeAttribute('aria-invalid');
+  descriptionInput.removeAttribute('aria-invalid');
   updateCount();
 }
 
@@ -68,7 +70,7 @@ function applyFilter() {
 
 // 5. EDITING AND DELETE CONFIRMATION
 // Fill the existing form instead of creating a second editing interface.
-function editTask(id, text) {
+function editTask(id, text, description) {
 
     editingId = id;
 
@@ -77,6 +79,7 @@ function editTask(id, text) {
 
     getElement('composer-title').textContent = 'A little adjustment.';
     input.value = text;
+    descriptionInput.value = description;
 
     getElement('submit-button').textContent = 'Save changes';
     getElement('cancel-edit').hidden = false;
@@ -89,7 +92,7 @@ function editTask(id, text) {
 }
 
 // 6. EVENT LISTENERS
-// This UI demo handles submissions in memory; it does not call a PHP backend.
+// PHP handles form submissions and communicates with the MySQL database.
 // EDIT TASK BUTTONS
 document.querySelectorAll('[data-action="edit"]').forEach(button => {
 
@@ -97,8 +100,9 @@ document.querySelectorAll('[data-action="edit"]').forEach(button => {
 
         const id = button.dataset.id;
         const text = button.dataset.text;
+        const description = button.dataset.description;
 
-        editTask(id, text);
+        editTask(id, text, description);
 
     });
 
@@ -168,6 +172,7 @@ dialog.addEventListener('close', () => {
 form.addEventListener('submit', event => {
 
     const text = input.value.trim();
+    const description = descriptionInput.value.trim();
 
     if (!text || text.length > 120) {
 
@@ -178,6 +183,19 @@ form.addEventListener('submit', event => {
 
         input.setAttribute('aria-invalid', 'true');
         input.focus();
+
+        return;
+    }
+
+    if (!description) {
+
+        event.preventDefault();
+
+        getElement('form-error').textContent =
+            'Please enter a task description.';
+
+        descriptionInput.setAttribute('aria-invalid', 'true');
+        descriptionInput.focus();
 
         return;
     }
@@ -195,6 +213,15 @@ input.addEventListener('input', () => {
 
 });
 
+// TASK DESCRIPTION INPUT LISTENER
+descriptionInput.addEventListener('input', () => {
+
+    descriptionInput.removeAttribute('aria-invalid');
+    getElement('form-error').textContent = '';
+
+});
+
+
 // CANCEL EDIT
 getElement('cancel-edit').addEventListener('click', () => {
 
@@ -207,6 +234,6 @@ getElement('cancel-edit').addEventListener('click', () => {
 
 
 // 7. INITIAL DISPLAY
-// Populate the page with the four example tasks when the script loads.
+// PHP renders tasks from the MySQL database when the page loads..
 updateCount();
 applyFilter();
